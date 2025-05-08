@@ -1,59 +1,185 @@
-service: serverless-todo-app
+service: serverless-todo-app-ufukcem-udacity
+frameworkVersion: '3'
 
 plugins:
   - serverless-iam-roles-per-function
 
-frameworkVersion: '3'
-
 provider:
   name: aws
-  runtime: nodejs14.x
+  profile: serverless
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  tracing:
+    lambda: true
+    apiGateway: true
+  environment:
+    TODOS_TABLE: ${self:service}-${self:provider.stage}-serverless-todo-app-ufukcem-udacity-v2
+    AUTH0_DOMAIN: dev-r5kzw1jv5wogvd8l.us.auth0.com
+    JWT_SECRET: ka1RoknkD8XJRc7WmOwHjfJc6wlST_p3jUp69OrPBhuVgcso1fcN80GNuiEyJpuL
+    S3_BUCKET: serverless-todo-app-ufukcem-udacity
+    ATTACHMENT_S3_BUCKET: serverless-todo-app-ufukcem-udacity
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: arn:aws:logs:${self:provider.region}:*:log-group:/aws/lambda/*
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:Query
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+      Resource: arn:aws:s3:::${self:provider.environment.S3_BUCKET}/*
 
 functions:
-
-  Auth:
-    handler: src/lambda/auth/auth0Authorizer.handler
-
-  # TODO: Configure this function
-  GetTodos:
+  getTodos:
     handler: src/lambda/http/getTodos.handler
     events:
       - http:
           method: get
           path: todos
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: true
 
-  # TODO: Configure this function
-  CreateTodo:
+  createTodo:
     handler: src/lambda/http/createTodo.handler
     events:
       - http:
           method: post
           path: todos
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: true
 
-  # TODO: Configure this function
-  UpdateTodo:
+  updateTodo:
     handler: src/lambda/http/updateTodo.handler
     events:
       - http:
           method: patch
           path: todos/{todoId}
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: true
 
-  # TODO: Configure this function
-  DeleteTodo:
+  deleteTodo:
     handler: src/lambda/http/deleteTodo.handler
     events:
       - http:
           method: delete
           path: todos/{todoId}
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: true
 
-  # TODO: Configure this function
-  GenerateUploadUrl:
+  generateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
     events:
       - http:
           method: post
           path: todos/{todoId}/attachment
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: true
+
+  auth0Authorizer:
+    handler: src/lambda/auth0Authorizer.handler
+    name: auth0Authorizer
+    memorySize: 128
+    timeout: 5
+    environment:
+      JWKS_URL: https://dev-r5kzw1jv5wogvd8l.us.auth0.com/.well-known/jwks.json
 
 resources:
   Resources:
-    # TODO: Add any necessary AWS resources
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    TodosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TODOS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: todoId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: todoId
+            KeyType: RANGE
+
+    UploadsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: serverless-todo-app-ufukcem-udacity
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+              AllowedHeaders:
+                - "*"
+              MaxAge: 3000
+
+Outputs:
+  TodosTableName:
+    Value: ${self:provider.environment.TODOS_TABLE}
+    Export:
+      Name: ${self:provider.environment.TODOS_TABLE}
+  UploadsBucketName:
+    Value: ${self:provider.environment.S3_BUCKET}
+    Export:
+      Name: ${self:provider.environment.S3_BUCKET}
