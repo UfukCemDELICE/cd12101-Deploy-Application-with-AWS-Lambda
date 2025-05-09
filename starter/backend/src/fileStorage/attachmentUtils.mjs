@@ -1,21 +1,37 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import AWS from 'aws-sdk';
+import AWSXRay from 'aws-xray-sdk';
+import { createLogger } from '../utils/logger.mjs';
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION })
+const logger = createLogger('attachmentUtils');
+const XRayAWS = AWSXRay.captureAWS(AWS);
+const s3 = new XRayAWS.S3({ 
+  region: process.env.AWS_REGION,
+  signatureVersion: 'v4'
+});
 
-const bucketName = process.env.ATTACHMENT_S3_BUCKET
-const signedUrlExpireSeconds = 300  
+const bucketName = process.env.ATTACHMENT_S3_BUCKET;
+const signedUrlExpireSeconds = 300;
 
 export async function generateUploadUrl(todoId) {
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: todoId,
-    ContentType: 'image/*'  
-  })
+  logger.info(`Generating upload URL for todo ${todoId}`);
+  
+  try {
+    const url = s3.getSignedUrl('putObject', {
+      Bucket: bucketName,
+      Key: todoId,
+      Expires: signedUrlExpireSeconds,
+      ContentType: 'image/*'
 
-  const url = await getSignedUrl(s3Client, command, {
-    expiresIn: signedUrlExpireSeconds
-  })
+    });
 
-  return url
+    logger.info(`Generated URL for todo ${todoId}: ${url}`);
+    return url;
+  } catch (error) {
+    logger.error(`Error generating upload URL: ${error.message}`, { error });
+    throw new Error(`Error generating upload URL: ${error.message}`);
+  }
+}
+
+export function getAttachmentUrl(todoId) {
+  return `https://${bucketName}.s3.amazonaws.com/${todoId}`;
 }

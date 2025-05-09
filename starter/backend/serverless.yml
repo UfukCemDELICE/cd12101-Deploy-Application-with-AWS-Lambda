@@ -39,7 +39,12 @@ provider:
         - s3:PutObject
         - s3:GetObject
       Resource: arn:aws:s3:::${self:provider.environment.S3_BUCKET}/*
-
+    - Effect: Allow
+      Action:
+        - xray:PutTraceSegments
+        - xray:PutTelemetryRecords
+      Resource: "*"
+    
 functions:
   getTodos:
     handler: src/lambda/http/getTodos.handler

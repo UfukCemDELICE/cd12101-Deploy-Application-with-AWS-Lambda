@@ -1,38 +1,27 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  QueryCommand,
-  PutCommand,
-  UpdateCommand,
-  GetCommand,
-  DeleteCommand
-} from '@aws-sdk/lib-dynamodb';
 import { createLogger } from '../utils/logger.mjs';
 import { v4 as uuidv4 } from 'uuid';
+import AWSXRay from 'aws-xray-sdk';
+import AWS from 'aws-sdk';
 
+const XRayAWS = AWSXRay.captureAWS(AWS);
 const logger = createLogger('todosAccess');
-
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
 
 export class TodosAccess {
   constructor() {
-    this.docClient = docClient;
+    this.dynamoDb = new XRayAWS.DynamoDB.DocumentClient();
     this.todosTable = process.env.TODOS_TABLE;
   }
 
   async getTodos(userId) {
     logger.info('Getting all todos for user', { userId });
 
-    const result = await this.docClient.send(
-      new QueryCommand({
-        TableName: this.todosTable,
-        KeyConditionExpression: 'userId = :userId',
-        ExpressionAttributeValues: {
-          ':userId': userId
-        }
-      })
-    );
+    const result = await this.dynamoDb.query({
+      TableName: this.todosTable,
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': userId
+      }
+    }).promise();
 
     return result.Items;
   }
@@ -49,12 +38,10 @@ export class TodosAccess {
       done: todoItem.done ?? false
     };
 
-    await this.docClient.send(
-      new PutCommand({
-        TableName: this.todosTable,
-        Item: item
-      })
-    );
+    await this.dynamoDb.put({
+      TableName: this.todosTable,
+      Item: item
+    }).promise();
 
     return item;
   }
@@ -94,19 +81,17 @@ export class TodosAccess {
       return {};
     }
 
-    const result = await this.docClient.send(
-      new UpdateCommand({
-        TableName: this.todosTable,
-        Key: {
-          userId,
-          todoId
-        },
-        UpdateExpression: 'set ' + updateExpressions.join(', '),
-        ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: expressionAttributeValues,
-        ReturnValues: 'ALL_NEW'
-      })
-    );
+    const result = await this.dynamoDb.update({
+      TableName: this.todosTable,
+      Key: {
+        userId,
+        todoId
+      },
+      UpdateExpression: 'set ' + updateExpressions.join(', '),
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ReturnValues: 'ALL_NEW'
+    }).promise();
 
     return result.Attributes;
   }
@@ -114,12 +99,10 @@ export class TodosAccess {
   async getTodoById(todoId, userId) {
     logger.info(`Fetching todo with id: ${todoId} for user: ${userId}`);
 
-    const result = await this.docClient.send(
-      new GetCommand({
-        TableName: this.todosTable,
-        Key: { userId, todoId }
-      })
-    );
+    const result = await this.dynamoDb.get({
+      TableName: this.todosTable,
+      Key: { userId, todoId }
+    }).promise();
 
     return result.Item;
   }
@@ -127,15 +110,13 @@ export class TodosAccess {
   async deleteTodo(todoId, userId) {
     logger.info(`Deleting todo from database with id: ${todoId}`);
 
-    await this.docClient.send(
-      new DeleteCommand({
-        TableName: this.todosTable,
-        Key: {
-          userId,
-          todoId
-        }
-      })
-    );
+    await this.dynamoDb.delete({
+      TableName: this.todosTable,
+      Key: {
+        userId,
+        todoId
+      }
+    }).promise();
   }
 }
 
